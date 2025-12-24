@@ -38,11 +38,11 @@ def init_components():
             logger.warning("⚠️ Не все переменные установлены, но приложение запустится в режиме health check")
             return True
         
-        # Загружаем credentials.json из Secret Manager если нужно
+        # Загружаем Service Account ключ из Secret Manager если нужно
         credentials_file = Config.GMAIL_CREDENTIALS
         if not os.path.exists(credentials_file) and Config.GCP_PROJECT_ID:
-            logger.info("📥 Загружаю credentials.json из Secret Manager...")
-            credentials_file = Config.get_secret_file("gmail-credentials-json", credentials_file)
+            logger.info("📥 Загружаю Service Account ключ из Secret Manager...")
+            credentials_file = Config.get_secret_file("gmail-service-account-json", credentials_file)
         
         try:
             db = DatabaseManager(Config.DATABASE_URL)
