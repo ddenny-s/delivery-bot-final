@@ -39,6 +39,35 @@ class Config:
             logger.warning(f"Используем переменную окружения {secret_id}")
             return os.environ.get(secret_id, "")
     
+    @staticmethod
+    def get_secret_file(secret_id: str, output_file: str, version_id: str = "latest") -> str:
+        """
+        Получить секрет и сохранить в файл
+        """
+        try:
+            project_id = os.environ.get("GCP_PROJECT_ID")
+            
+            if not project_id:
+                logger.warning(f"GCP_PROJECT_ID не установлен, ищем локальный файл {output_file}")
+                if os.path.exists(output_file):
+                    return output_file
+                return ""
+            
+            client = secretmanager.SecretManagerServiceClient()
+            name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+            response = client.access_secret_version(request={"name": name})
+            
+            with open(output_file, 'w') as f:
+                f.write(response.payload.data.decode("UTF-8"))
+            
+            logger.info(f"✅ Секрет {secret_id} сохранен в {output_file}")
+            return output_file
+        except Exception as e:
+            logger.warning(f"Не удалось получить секрет {secret_id}: {e}")
+            if os.path.exists(output_file):
+                return output_file
+            return ""
+    
     # OpenAI Configuration
     OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
     
