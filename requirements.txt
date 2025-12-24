@@ -3,7 +3,7 @@ google-auth-httplib2==0.2.0
 google-api-python-client==2.108.0
 google-cloud-secret-manager==2.16.4
 python-telegram-bot==21.1
-openai==1.13.0
+openai==1.13.3
 schedule==1.2.0
 beautifulsoup4==4.12.2
 lxml==4.9.3
