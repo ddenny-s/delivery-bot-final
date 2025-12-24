@@ -36,7 +36,13 @@ def init_components():
         
         if not config_valid:
             logger.warning("⚠️ Не все переменные установлены, но приложение запустится в режиме health check")
-            return True  # Возвращаем True, чтобы приложение запустилось
+            return True
+        
+        # Загружаем credentials.json из Secret Manager если нужно
+        credentials_file = Config.GMAIL_CREDENTIALS
+        if not os.path.exists(credentials_file) and Config.GCP_PROJECT_ID:
+            logger.info("📥 Загружаю credentials.json из Secret Manager...")
+            credentials_file = Config.get_secret_file("gmail-credentials-json", credentials_file)
         
         try:
             db = DatabaseManager(Config.DATABASE_URL)
@@ -45,8 +51,11 @@ def init_components():
             logger.warning(f"⚠️ Ошибка инициализации БД: {e}")
         
         try:
-            gmail_client = GmailClient(Config.GMAIL_CREDENTIALS, Config.GMAIL_TOKEN)
-            logger.info("✅ Gmail клиент инициализирован")
+            if os.path.exists(credentials_file):
+                gmail_client = GmailClient(credentials_file, Config.GMAIL_TOKEN)
+                logger.info("✅ Gmail клиент инициализирован")
+            else:
+                logger.warning(f"⚠️ Файл {credentials_file} не найден, Gmail клиент не инициализирован")
         except Exception as e:
             logger.warning(f"⚠️ Ошибка инициализации Gmail: {e}")
         
@@ -67,7 +76,7 @@ def init_components():
         return True
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации: {e}")
-        return True  # Все равно возвращаем True, чтобы приложение запустилось
+        return True
 
 
 # Инициализируем при старте
@@ -104,7 +113,6 @@ def check_deliveries():
         for delivery in deliveries:
             db.add_delivery(delivery)
             message = parser.format_for_telegram(delivery)
-            # Отправляем асинхронно
             asyncio.run(telegram_bot.send_message(Config.TELEGRAM_CHAT_ID, message))
             count += 1
         

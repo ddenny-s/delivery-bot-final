@@ -55,13 +55,13 @@ class DeliveryParser:
 }}"""
         
         try:
-            response = self.client.messages.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}]
             )
             
-            response_text = response.content[0].text.strip()
+            response_text = response.choices[0].message.content.strip()
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             
             if json_match:
