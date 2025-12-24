@@ -1,14 +1,11 @@
 """
-Gmail API клиент
+Gmail API клиент с Service Account
 """
 import base64
 import os
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials as UserCredentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.exceptions import RefreshError
+import json
+from google.oauth2 import service_account
 from googleapiclient import discovery
-from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 import logging
 
@@ -17,45 +14,34 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 
 class GmailClient:
-    """Клиент для работы с Gmail API"""
+    """Клиент для работы с Gmail API через Service Account"""
     
     def __init__(self, credentials_file: str = "credentials.json", token_file: str = "token.json"):
         """Инициализация Gmail клиента"""
         self.credentials_file = credentials_file
-        self.token_file = token_file
         self.service = None
         self._authenticate()
     
     def _authenticate(self):
-        """Аутентификация в Gmail API"""
-        creds = None
-        
-        # Пытаемся загрузить существующий токен
-        if os.path.exists(self.token_file):
-            try:
-                creds = UserCredentials.from_authorized_user_file(self.token_file, SCOPES)
-                logger.info("✅ Токен загружен из файла")
-            except Exception as e:
-                logger.warning(f"⚠️ Не удалось загрузить токен: {e}")
-        
-        # Если токена нет или он невалиден
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                try:
-                    creds.refresh(Request())
-                    logger.info("✅ Токен обновлен")
-                except RefreshError as e:
-                    logger.warning(f"⚠️ Не удалось обновить токен: {e}")
-                    raise Exception("Требуется переаутентификация")
-            else:
-                logger.warning("⚠️ Токен отсутствует или невалиден")
-                raise Exception("Требуется переаутентификация через браузер")
-        
+        """Аутентификация в Gmail API через Service Account"""
         try:
-            self.service = discovery.build('gmail', 'v1', credentials=creds)
-            logger.info("✅ Gmail клиент аутентифицирован")
+            # Пытаемся загрузить Service Account ключ
+            if os.path.exists(self.credentials_file):
+                with open(self.credentials_file, 'r') as f:
+                    service_account_info = json.load(f)
+                
+                credentials = service_account.Credentials.from_service_account_info(
+                    service_account_info,
+                    scopes=SCOPES
+                )
+                
+                self.service = discovery.build('gmail', 'v1', credentials=credentials)
+                logger.info("✅ Gmail клиент аутентифицирован через Service Account")
+            else:
+                logger.warning(f"⚠️ Файл {self.credentials_file} не найден")
+                raise Exception(f"Credentials file {self.credentials_file} not found")
         except Exception as e:
-            logger.error(f"❌ Ошибка при создании сервиса: {e}")
+            logger.error(f"❌ Ошибка при аутентификации: {e}")
             raise
     
     def get_emails_since(self, hours: int = 24) -> List[Dict]:
