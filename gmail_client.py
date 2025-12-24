@@ -7,7 +7,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials as UserCredentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.exceptions import RefreshError
-from google.api_python_client import discovery
+from googleapiclient import discovery
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 import logging
@@ -19,14 +19,15 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 class GmailClient:
     """Клиент для работы с Gmail API"""
     
-    def __init__(self, credentials_file: str = 'credentials.json', token_file: str = 'token.json'):
+    def __init__(self, credentials_file: str = "credentials.json", token_file: str = "token.json"):
+        """Инициализация Gmail клиента"""
         self.credentials_file = credentials_file
         self.token_file = token_file
         self.service = None
-        self.authenticate()
+        self._authenticate()
     
-    def authenticate(self):
-        """Авторизация с Gmail API"""
+    def _authenticate(self):
+        """Аутентификация в Gmail API"""
         creds = None
         
         if os.path.exists(self.token_file):
@@ -37,89 +38,66 @@ class GmailClient:
                 try:
                     creds.refresh(Request())
                 except RefreshError:
-                    creds = None
-            
-            if not creds:
-                flow = InstalledAppFlow.from_client_secrets_file(self.credentials_file, SCOPES)
-                creds = flow.run_local_server(port=0)
-            
-            with open(self.token_file, 'w') as token:
-                token.write(creds.to_json())
+                    logger.warning("Не удалось обновить токен, требуется переаутентификация")
+                    self._get_new_credentials()
+            else:
+                self._get_new_credentials()
         
         self.service = discovery.build('gmail', 'v1', credentials=creds)
-        logger.info("✅ Gmail клиент инициализирован")
+        logger.info("✅ Gmail клиент аутентифицирован")
+    
+    def _get_new_credentials(self):
+        """Получить новые учетные данные"""
+        flow = InstalledAppFlow.from_client_secrets_file(
+            self.credentials_file, SCOPES)
+        creds = flow.run_local_server(port=0)
+        
+        with open(self.token_file, 'w') as token:
+            token.write(creds.to_json())
     
     def get_emails_since(self, hours: int = 24) -> List[Dict]:
         """Получить письма за последние N часов"""
         try:
             query = f'newer_than:{hours}h'
-            results = self.service.users().messages().list(
-                userId='me',
-                q=query,
-                maxResults=50
-            ).execute()
-            
+            results = self.service.users().messages().list(userId='me', q=query).execute()
             messages = results.get('messages', [])
+            
             emails = []
-            
             for message in messages:
-                email_data = self.parse_message(message['id'])
-                if email_data:
-                    emails.append(email_data)
+                msg = self.service.users().messages().get(userId='me', id=message['id']).execute()
+                emails.append(msg)
             
-            logger.info(f"✅ Получено {len(emails)} писем")
+            logger.info(f"📧 Получено {len(emails)} писем")
             return emails
         except Exception as e:
             logger.error(f"❌ Ошибка при получении писем: {e}")
             return []
     
-    def parse_message(self, message_id: str) -> Optional[Dict]:
-        """Парсить одно письмо"""
-        try:
-            message = self.service.users().messages().get(
-                userId='me',
-                id=message_id,
-                format='full'
-            ).execute()
-            
-            headers = message['payload']['headers']
-            subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'Без темы')
-            sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Неизвестно')
-            
-            body = self.get_message_body(message)
-            
-            return {
-                'id': message_id,
-                'subject': subject,
-                'sender': sender,
-                'body': body
-            }
-        except Exception as e:
-            logger.error(f"❌ Ошибка при парсинге письма: {e}")
-            return None
-    
-    def get_message_body(self, message: Dict) -> str:
-        """Извлечь текст письма"""
+    def get_email_body(self, message: Dict) -> str:
+        """Извлечь текст из письма"""
         try:
             if 'parts' in message['payload']:
                 parts = message['payload']['parts']
-                data = ''
-                for part in parts:
-                    if part['mimeType'] == 'text/plain':
-                        if 'data' in part['body']:
-                            data = part['body']['data']
-                            break
-                    elif part['mimeType'] == 'text/html':
-                        if 'data' in part['body']:
-                            data = part['body']['data']
+                data = parts[0]['body'].get('data', '')
             else:
                 data = message['payload']['body'].get('data', '')
             
             if data:
                 text = base64.urlsafe_b64decode(data).decode('utf-8')
-                soup = BeautifulSoup(text, 'html.parser')
-                return soup.get_text()
-            return ''
+                return text
+            return ""
         except Exception as e:
             logger.error(f"❌ Ошибка при извлечении текста: {e}")
-            return ''
+            return ""
+    
+    def get_email_subject(self, message: Dict) -> str:
+        """Получить тему письма"""
+        try:
+            headers = message['payload']['headers']
+            for header in headers:
+                if header['name'] == 'Subject':
+                    return header['value']
+            return "No Subject"
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении темы: {e}")
+            return "No Subject"
