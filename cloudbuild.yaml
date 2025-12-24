@@ -1,0 +1,9 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'europe-west1-docker.pkg.dev/sharp-stack-482213-t9/cloud-run-source-deploy/delivery-bot-final/delivery-bot-final:$BUILD_ID', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'europe-west1-docker.pkg.dev/sharp-stack-482213-t9/cloud-run-source-deploy/delivery-bot-final/delivery-bot-final:$BUILD_ID']
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args: ['run', 'deploy', 'delivery-bot-final', '--image=europe-west1-docker.pkg.dev/sharp-stack-482213-t9/cloud-run-source-deploy/delivery-bot-final/delivery-bot-final:$BUILD_ID', '--region=europe-west1', '--platform=managed']
+images:
+  - 'europe-west1-docker.pkg.dev/sharp-stack-482213-t9/cloud-run-source-deploy/delivery-bot-final/delivery-bot-final:$BUILD_ID'
