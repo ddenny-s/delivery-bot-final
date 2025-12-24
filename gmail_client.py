@@ -30,42 +30,52 @@ class GmailClient:
         """Аутентификация в Gmail API"""
         creds = None
         
+        # Пытаемся загрузить существующий токен
         if os.path.exists(self.token_file):
-            creds = UserCredentials.from_authorized_user_file(self.token_file, SCOPES)
+            try:
+                creds = UserCredentials.from_authorized_user_file(self.token_file, SCOPES)
+                logger.info("✅ Токен загружен из файла")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось загрузить токен: {e}")
         
+        # Если токена нет или он невалиден
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 try:
                     creds.refresh(Request())
-                except RefreshError:
-                    logger.warning("Не удалось обновить токен, требуется переаутентификация")
-                    self._get_new_credentials()
+                    logger.info("✅ Токен обновлен")
+                except RefreshError as e:
+                    logger.warning(f"⚠️ Не удалось обновить токен: {e}")
+                    raise Exception("Требуется переаутентификация")
             else:
-                self._get_new_credentials()
+                logger.warning("⚠️ Токен отсутствует или невалиден")
+                raise Exception("Требуется переаутентификация через браузер")
         
-        self.service = discovery.build('gmail', 'v1', credentials=creds)
-        logger.info("✅ Gmail клиент аутентифицирован")
-    
-    def _get_new_credentials(self):
-        """Получить новые учетные данные"""
-        flow = InstalledAppFlow.from_client_secrets_file(
-            self.credentials_file, SCOPES)
-        creds = flow.run_local_server(port=0)
-        
-        with open(self.token_file, 'w') as token:
-            token.write(creds.to_json())
+        try:
+            self.service = discovery.build('gmail', 'v1', credentials=creds)
+            logger.info("✅ Gmail клиент аутентифицирован")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при создании сервиса: {e}")
+            raise
     
     def get_emails_since(self, hours: int = 24) -> List[Dict]:
         """Получить письма за последние N часов"""
         try:
+            if not self.service:
+                logger.warning("⚠️ Gmail сервис не инициализирован")
+                return []
+            
             query = f'newer_than:{hours}h'
             results = self.service.users().messages().list(userId='me', q=query).execute()
             messages = results.get('messages', [])
             
             emails = []
             for message in messages:
-                msg = self.service.users().messages().get(userId='me', id=message['id']).execute()
-                emails.append(msg)
+                try:
+                    msg = self.service.users().messages().get(userId='me', id=message['id']).execute()
+                    emails.append(msg)
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка при получении письма {message['id']}: {e}")
             
             logger.info(f"📧 Получено {len(emails)} писем")
             return emails
